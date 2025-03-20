@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { sendAnalytics } from './analytics';
 import { handleAuthCallback, setupAuthAutoRefresh } from './auth';
 import { listenForIpcMessages } from './events';
+import MCPService from './mcp/service';
 import runManager from './run';
 import { updater } from './update';
 
@@ -92,8 +93,11 @@ const initMainWindow = () => {
 };
 
 const setupAppEventListeners = () => {
-    app.whenReady().then(() => {
+    app.whenReady().then(async () => {
         initMainWindow();
+
+        // Initialize MCP service
+        await MCPService.initialize();
     });
 
     app.on('ready', () => {
@@ -139,10 +143,48 @@ const setupAppEventListeners = () => {
         });
 
         try {
+            // First, clean up MCP resources separately to ensure it completes
+            try {
+                console.log('Cleaning up MCP resources...');
+                await Promise.race([
+                    MCPService.dispose(),
+                    new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error('MCP cleanup timeout')), 3000),
+                    ),
+                ]);
+                console.log('MCP resources cleaned up successfully');
+            } catch (mcpError) {
+                console.error('Error cleaning up MCP resources:', mcpError);
+                // Continue with other cleanup even if MCP cleanup fails
+            }
+
+            // Then clean up other resources
             await Promise.race([
                 Promise.all([
-                    mainWindow?.webContents.send(MainChannels.CLEAN_UP_BEFORE_QUIT),
-                    runManager?.stopAll(),
+                    // Wrap send in a Promise to allow catch
+                    new Promise<void>((resolve) => {
+                        if (mainWindow?.webContents) {
+                            try {
+                                mainWindow.webContents.send(MainChannels.CLEAN_UP_BEFORE_QUIT);
+                            } catch (e: any) {
+                                console.error('Error sending cleanup message to renderer:', e);
+                            }
+                        }
+                        resolve();
+                    }),
+                    // Wrap stopAll in a Promise to allow catch
+                    new Promise<void>((resolve) => {
+                        if (runManager) {
+                            runManager
+                                .stopAll()
+                                .catch((e: any) => {
+                                    console.error('Error stopping run manager:', e);
+                                })
+                                .finally(() => resolve());
+                        } else {
+                            resolve();
+                        }
+                    }),
                 ]),
                 timeoutPromise,
             ]);

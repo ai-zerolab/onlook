@@ -1,3 +1,4 @@
+import type { MCPConfig } from '@onlook/ai';
 import type { ChatConversation, ProjectSuggestions } from '@onlook/models/chat';
 import type {
     AppState,
@@ -17,6 +18,7 @@ export enum StorageType {
     PROJECTS = 'projects',
     CONVERSATIONS = 'conversations-v1',
     SUGGESTIONS = 'suggestions',
+    MCP = 'mcp',
 }
 
 export class PersistentStorage {
@@ -41,4 +43,5 @@ export class PersistentStorage {
         false,
         (suggestion) => suggestion.projectId,
     );
+    static readonly MCP = new SingleFilePersistentStorage<MCPConfig>(StorageType.MCP);
 }

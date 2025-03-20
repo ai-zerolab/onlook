@@ -1,6 +1,7 @@
 import { PromptProvider } from '@onlook/ai/src/prompt/provider';
 import { chatToolSet } from '@onlook/ai/src/tools';
-import { CLAUDE_MODELS, LLMProvider } from '@onlook/models';
+import { LLMProvider, BEDROCK_MODELS } from '@onlook/models';
+import MCPService from '../mcp/service';
 import {
     ChatSuggestionSchema,
     ChatSummarySchema,
@@ -14,6 +15,7 @@ import { MainChannels } from '@onlook/models/constants';
 import {
     generateObject,
     streamText,
+    tool,
     type CoreMessage,
     type CoreSystemMessage,
     type TextStreamPart,
@@ -78,9 +80,22 @@ class LlmManager {
                 } as CoreSystemMessage;
                 messages = [systemMessage, ...messages];
             }
-            const model = await initModel(LLMProvider.ANTHROPIC, CLAUDE_MODELS.SONNET, {
+            const model = await initModel(LLMProvider.BEDROCK_MODELS, BEDROCK_MODELS.SONNET, {
                 requestType,
             });
+
+            // Get MCP tools from the service
+            let mcpTools: ToolSet = {};
+            try {
+                const mcpToolsList = await MCPService.getTools();
+                if (mcpToolsList.length > 0) {
+                    mcpTools = await this.convertMCPToolsToToolSet(mcpToolsList);
+                }
+            } catch (error) {
+                console.error('Failed to get MCP tools:', error);
+            }
+
+            const tools: ToolSet = { ...chatToolSet, ...mcpTools };
 
             const { usage, fullStream, text, response } = await streamText({
                 model,
@@ -91,7 +106,7 @@ class LlmManager {
                     throw error;
                 },
                 maxSteps: 10,
-                tools: chatToolSet,
+                tools: tools,
                 maxTokens: 64000,
                 headers: {
                     'anthropic-beta': 'output-128k-2025-02-19',
@@ -170,9 +185,93 @@ class LlmManager {
         return 'An unknown error occurred';
     }
 
+    /**
+     * Convert MCP tools to ToolSet format for the AI SDK
+     */
+    private async convertMCPToolsToToolSet(mcpTools: any[]): Promise<ToolSet> {
+        const toolSet: ToolSet = {};
+
+        for (const mcpTool of mcpTools) {
+            const toolName = `${mcpTool.server}-${mcpTool.name}`;
+
+            toolSet[toolName] = tool({
+                description: mcpTool.description || '',
+                parameters: this.convertJsonSchemaToZod(mcpTool.input_schema),
+                execute: async (args: Record<string, unknown>) => {
+                    try {
+                        const result = await MCPService.callTool(toolName, args);
+                        return result;
+                    } catch (error) {
+                        return `Error: ${error instanceof Error ? error.message : 'Unknown error'}`;
+                    }
+                },
+            });
+        }
+
+        return toolSet;
+    }
+
+    /**
+     * Convert JSON Schema to Zod schema
+     */
+    private convertJsonSchemaToZod(schema: any): z.ZodTypeAny {
+        if (!schema || !schema.properties) {
+            return z.object({});
+        }
+
+        const zodSchema: Record<string, z.ZodTypeAny> = {};
+        const required = schema.required || [];
+
+        for (const [key, prop] of Object.entries<any>(schema.properties)) {
+            let zodProp;
+
+            switch (prop.type) {
+                case 'string':
+                    zodProp = z.string();
+                    if (prop.enum) {
+                        zodProp = z.enum(prop.enum);
+                    }
+                    break;
+                case 'number':
+                    zodProp = z.number();
+                    break;
+                case 'integer':
+                    zodProp = z.number().int();
+                    break;
+                case 'boolean':
+                    zodProp = z.boolean();
+                    break;
+                case 'array':
+                    if (prop.items) {
+                        zodProp = z.array(this.convertJsonSchemaToZod(prop.items));
+                    } else {
+                        zodProp = z.array(z.any());
+                    }
+                    break;
+                case 'object':
+                    zodProp = this.convertJsonSchemaToZod(prop);
+                    break;
+                default:
+                    zodProp = z.any();
+            }
+
+            if (prop.description) {
+                zodProp = zodProp.describe(prop.description);
+            }
+
+            if (!required.includes(key)) {
+                zodProp = zodProp.optional();
+            }
+
+            zodSchema[key] = zodProp;
+        }
+
+        return z.object(zodSchema);
+    }
+
     public async generateSuggestions(messages: CoreMessage[]): Promise<ChatSuggestion[]> {
         try {
-            const model = await initModel(LLMProvider.ANTHROPIC, CLAUDE_MODELS.HAIKU, {
+            const model = await initModel(LLMProvider.BEDROCK_MODELS, BEDROCK_MODELS.SONNET, {
                 requestType: StreamRequestType.SUGGESTIONS,
             });
 
@@ -191,7 +290,7 @@ class LlmManager {
 
     public async generateChatSummary(messages: CoreMessage[]): Promise<string | null> {
         try {
-            const model = await initModel(LLMProvider.ANTHROPIC, CLAUDE_MODELS.HAIKU, {
+            const model = await initModel(LLMProvider.BEDROCK_MODELS, BEDROCK_MODELS.SONNET, {
                 requestType: StreamRequestType.SUMMARY,
             });
 

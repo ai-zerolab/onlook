@@ -2,6 +2,9 @@ import type { Channels } from '@onlook/models/constants';
 import type { IpcRendererEvent } from 'electron';
 import { contextBridge, ipcRenderer, webFrame } from 'electron';
 
+// Import MCP preload script
+import './mcp';
+
 declare global {
     interface Window {
         api: typeof api;
