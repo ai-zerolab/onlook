@@ -23,11 +23,15 @@ export interface StdioServerParameters {
  */
 export interface ManagedStdioServerParameters extends ManagedParameters, StdioServerParameters {}
 
+export interface ManagedSseServerParameters extends ManagedParameters {
+    url: string;
+}
+
 /**
  * Configuration for MCP servers
  */
 export interface MCPConfig {
-    mcpServers: Record<string, ManagedStdioServerParameters>;
+    mcpServers: Record<string, ManagedStdioServerParameters | ManagedSseServerParameters>;
 }
 
 /**
@@ -82,11 +86,42 @@ export class MCPClientManager {
     private async initializeClients(): Promise<void> {
         await Promise.all(
             Object.entries(this.config.mcpServers).map(async ([key, value]) => {
-                if (!value.disabled) {
-                    await this.initializeStdioClient(key, value);
+                if (value.disabled) {
+                    console.warn(`Server ${key} is disabled, skipping initialization.`);
+                    return;
+                }
+                if ('command' in value) {
+                    await this.initializeStdioClient(key, value as ManagedStdioServerParameters);
+                } else {
+                    await this.initializeSseClient(key, value as ManagedSseServerParameters);
                 }
             }),
         );
+    }
+    private async initializeSseClient(
+        key: string,
+        params: ManagedSseServerParameters,
+    ): Promise<void> {
+        const escapedKey = this.escapeServerName(key);
+
+        // Store mapping between original and escaped server names
+        this.serverToEscapedMap[key] = escapedKey;
+        this.escapedToServerMap[escapedKey] = key;
+
+        try {
+            // Create MCP client
+            const client = await experimental_createMCPClient({
+                transport: {
+                    type: 'sse',
+                    url: params.url,
+                },
+            });
+
+            this.clients[escapedKey] = client;
+            console.log(`Successfully connected to MCP server: ${key}`);
+        } catch (e) {
+            console.error(`Error connecting to MCP server ${key}:`, e);
+        }
     }
 
     /**
