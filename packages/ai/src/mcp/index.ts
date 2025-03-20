@@ -123,17 +123,15 @@ export class MCPClientManager {
                     }
                 }
             }
-
+            const transport = new StdioClientTransport({
+                command: params.command,
+                args: params.args || [],
+                env: combinedEnv,
+                cwd: params.cwd,
+            });
             // Create MCP client
             const client = await experimental_createMCPClient({
-                transport: {
-                    // @ts-expect-error
-                    type: 'stdio',
-                    command: params.command,
-                    args: params.args || [],
-                    env: combinedEnv,
-                    cwd: params.cwd,
-                },
+                transport,
             });
 
             this.clients[escapedKey] = client;
