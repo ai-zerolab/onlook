@@ -87,10 +87,7 @@ class LlmManager {
             // Get MCP tools from the service
             let mcpTools: ToolSet = {};
             try {
-                const mcpToolsList = await MCPService.getTools();
-                if (mcpToolsList.length > 0) {
-                    mcpTools = await this.convertMCPToolsToToolSet(mcpToolsList);
-                }
+                mcpTools = await MCPService.getToolSet();
             } catch (error) {
                 console.error('Failed to get MCP tools:', error);
             }

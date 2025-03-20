@@ -93,11 +93,20 @@ const initMainWindow = () => {
 };
 
 const setupAppEventListeners = () => {
-    app.whenReady().then(async () => {
+    app.whenReady().then(() => {
         initMainWindow();
 
-        // Initialize MCP service
-        await MCPService.initialize();
+        // Delay MCP initialization until window is fully loaded
+        if (mainWindow) {
+            mainWindow.webContents.on('did-finish-load', async () => {
+                try {
+                    console.log('Window loaded, initializing MCP service...');
+                    await MCPService.initialize();
+                } catch (error) {
+                    console.error('Failed to initialize MCP service:', error);
+                }
+            });
+        }
     });
 
     app.on('ready', () => {

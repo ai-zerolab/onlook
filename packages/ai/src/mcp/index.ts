@@ -1,42 +1,38 @@
-// import { URL } from 'url';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import {
-    StdioClientTransport,
-    type StdioServerParameters,
-} from '@modelcontextprotocol/sdk/client/stdio.js';
-// import {
-//     SSEClientTransport,
-//     type SSEClientTransportOptions,
-// } from '@modelcontextprotocol/sdk/client/sse.js';
-// import { WebSocketClientTransport } from '@modelcontextprotocol/sdk/client/websocket.js';
-import { tool, type ToolSet } from 'ai';
-import { z } from 'zod';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { experimental_createMCPClient, type ToolSet } from 'ai';
 
+/**
+ * Interface for server parameters with disabled flag
+ */
 export interface ManagedParameters {
     disabled: boolean;
 }
 
-// export interface SSEServerParameters extends ManagedParameters {
-//     url: URL;
-//     opts?: SSEClientTransportOptions;
-// }
-
-// export interface ManagedSSEServerParameters extends ManagedParameters, SSEServerParameters {}
-
-// export interface ManagedWebsocketServerParameters extends ManagedParameters {
-//     url: URL;
-// }
-
-export interface ManagedStdioServerParameters extends ManagedParameters, StdioServerParameters {}
-
-export interface MCPConfig {
-    mcpServers: Record<
-        string,
-        ManagedStdioServerParameters
-        // | ManagedSSEServerParameters | ManagedWebsocketServerParameters
-    >;
+/**
+ * Interface for stdio server parameters
+ */
+export interface StdioServerParameters {
+    command: string;
+    args?: string[];
+    env?: Record<string, string>;
+    cwd?: string;
 }
 
+/**
+ * Combined interface for managed stdio server parameters
+ */
+export interface ManagedStdioServerParameters extends ManagedParameters, StdioServerParameters {}
+
+/**
+ * Configuration for MCP servers
+ */
+export interface MCPConfig {
+    mcpServers: Record<string, ManagedStdioServerParameters>;
+}
+
+/**
+ * Interface for MCP tool metadata
+ */
 export interface MCPTool {
     name: string;
     description: string;
@@ -44,16 +40,14 @@ export interface MCPTool {
     server: string;
 }
 
-interface ToolDefinition {
-    name: string;
-    description: string;
-    parameters_json_schema: any;
-}
-
+/**
+ * Manager for MCP clients using the AI package's experimental MCP client
+ */
 export class MCPClientManager {
     private config: MCPConfig;
-    private clients: Record<string, Client> = {};
+    private clients: Record<string, any> = {};
     private tools: MCPTool[] = [];
+    private toolsCache: Record<string, any> = {};
     private serverToEscapedMap: Record<string, string> = {};
     private escapedToServerMap: Record<string, string> = {};
 
@@ -61,6 +55,9 @@ export class MCPClientManager {
         this.config = config;
     }
 
+    /**
+     * Create a new MCPClientManager instance
+     */
     public static async create(config: MCPConfig): Promise<MCPClientManager> {
         const manager = new MCPClientManager(config);
         await manager.initializeClients();
@@ -86,37 +83,11 @@ export class MCPClientManager {
         await Promise.all(
             Object.entries(this.config.mcpServers).map(async ([key, value]) => {
                 if (!value.disabled) {
-                    await this.initializeStdioClient(key, value as ManagedStdioServerParameters);
+                    await this.initializeStdioClient(key, value);
                 }
             }),
         );
-
-        // if ('url' in value) {
-        //     if (value.url.protocol.startsWith('http')) {
-        //         this.initializeSSEClient(key, value as ManagedSSEServerParameters);
-        //     } else {
-        //         this.initializeWebSocketClient(key, value as ManagedWebsocketServerParameters);
-        //     }
-        // } else {
-        //     this.initializeStdioClient(key, value as ManagedStdioServerParameters);
-        // }
     }
-
-    /**
-     * Initialize an SSE client
-     */
-    // private initializeSSEClient(key: string, params: ManagedSSEServerParameters): void {
-    //     const transport = new SSEClientTransport(params.url, params.opts);
-    //     this.createAndConnectClient(key, transport);
-    // }
-
-    // /**
-    //  * Initialize a WebSocket client
-    //  */
-    // private initializeWebSocketClient(key: string, params: ManagedWebsocketServerParameters): void {
-    //     const transport = new WebSocketClientTransport(params.url);
-    //     this.createAndConnectClient(key, transport);
-    // }
 
     /**
      * Initialize a stdio client
@@ -125,39 +96,55 @@ export class MCPClientManager {
         key: string,
         params: ManagedStdioServerParameters,
     ): Promise<void> {
-        const transport = new StdioClientTransport(params);
-        await this.createAndConnectClient(key, transport);
-    }
-
-    /**
-     * Create a client and connect it with the provided transport
-     */
-    private async createAndConnectClient(
-        key: string,
-        transport: StdioClientTransport,
-        // | SSEClientTransport | WebSocketClientTransport |
-    ): Promise<void> {
-        const client = new Client({ name: key, version: '1.0.0' });
         const escapedKey = this.escapeServerName(key);
 
         // Store mapping between original and escaped server names
         this.serverToEscapedMap[key] = escapedKey;
         this.escapedToServerMap[escapedKey] = key;
 
-        // Handle the async connect properly
         try {
-            await client.connect(transport);
+            // Create transport with the server parameters
+            // Combine params.env with process.env, giving priority to params.env
+            // Filter out undefined values and ensure all values are strings
+            const combinedEnv: Record<string, string> = {};
+
+            // Add process.env values (filtering out undefined)
+            for (const [key, value] of Object.entries(process.env)) {
+                if (value !== undefined) {
+                    combinedEnv[key] = value;
+                }
+            }
+
+            // Add params.env values (overriding process.env if duplicates)
+            if (params.env) {
+                for (const [key, value] of Object.entries(params.env)) {
+                    if (value !== undefined) {
+                        combinedEnv[key] = value;
+                    }
+                }
+            }
+
+            // Create MCP client
+            const client = await experimental_createMCPClient({
+                transport: {
+                    // @ts-expect-error
+                    type: 'stdio',
+                    command: params.command,
+                    args: params.args || [],
+                    env: combinedEnv,
+                    cwd: params.cwd,
+                },
+            });
+
             this.clients[escapedKey] = client;
+            console.log(`Successfully connected to MCP server: ${key}`);
         } catch (e) {
-            console.error(`Error connecting to server ${key}:`, e);
+            console.error(`Error connecting to MCP server ${key}:`, e);
         }
     }
 
     /**
      * Call a tool by its definition name
-     * @param toolDefinitionName The prefixed tool name (e.g., "server-toolname")
-     * @param args Arguments to pass to the tool
-     * @returns Result of the tool execution
      */
     public async callTool(toolDefinitionName: string, args: any): Promise<any> {
         const [escapedServerName, toolName] = this.dispatchToolDefinitionName(toolDefinitionName);
@@ -168,11 +155,19 @@ export class MCPClientManager {
         }
 
         try {
-            const result = await client.callTool({
-                name: toolName,
-                arguments: args,
-            });
-            return result;
+            // Get the tool function from cache or fetch it
+            let toolFn = this.toolsCache[toolDefinitionName];
+            if (!toolFn) {
+                const toolSet = await client.tools();
+                toolFn = toolSet[toolName];
+                if (!toolFn) {
+                    throw new Error(`Tool not found: ${toolName}`);
+                }
+                this.toolsCache[toolDefinitionName] = toolFn;
+            }
+
+            // Execute the tool with the provided arguments
+            return await toolFn.execute(args);
         } catch (e) {
             console.error(`Error calling tool ${toolName} on server ${escapedServerName}:`, e);
             throw e;
@@ -184,21 +179,23 @@ export class MCPClientManager {
      */
     public async close(): Promise<void> {
         await Promise.all(
-            Object.values(this.clients).map((client) =>
-                client.close().catch((e) => console.error('Error closing client:', e)),
-            ),
+            Object.entries(this.clients).map(async ([key, client]) => {
+                try {
+                    await client.close();
+                } catch (e) {
+                    console.error(`Error closing client ${key}:`, e);
+                }
+            }),
         );
         this.clients = {};
         this.tools = [];
+        this.toolsCache = {};
         this.serverToEscapedMap = {};
         this.escapedToServerMap = {};
     }
 
     /**
      * Escape server name to follow the pattern [a-zA-Z0-9_]+
-     * Convert invalid characters to their ASCII code with prefix '_'
-     * @param serverName The server name to escape
-     * @returns Escaped server name
      */
     private escapeServerName(serverName: string): string {
         return serverName
@@ -215,7 +212,6 @@ export class MCPClientManager {
 
     /**
      * List all available tools from all connected MCP clients
-     * @returns Promise resolving to an array of MCPTool objects
      */
     public async listAllTools(): Promise<MCPTool[]> {
         // If tools are already fetched, return them
@@ -225,11 +221,11 @@ export class MCPClientManager {
 
         const toolPromises = Object.entries(this.clients).map(async ([serverName, client]) => {
             try {
-                const toolsResult = await client.listTools();
-                return toolsResult.tools.map((tool) => ({
-                    name: tool.name,
-                    description: tool.description || '',
-                    input_schema: tool.inputSchema,
+                const toolSet = await client.tools();
+                return Object.entries(toolSet).map(([name, toolObj]: [string, any]) => ({
+                    name,
+                    description: toolObj.description || '',
+                    input_schema: toolObj.parameters?._def?.schema || {},
                     server: serverName,
                 }));
             } catch (e) {
@@ -250,122 +246,35 @@ export class MCPClientManager {
     }
 
     /**
-     * Get tool definitions with server name prefixes
-     * @param serverName The name of the server
-     * @param tools The list of tools from the server
-     * @returns List of tool definitions with prefixed names
-     */
-    private getToolDefinitions(serverName: string, tools: any[]): ToolDefinition[] {
-        const escapedServerName = this.escapeServerName(serverName);
-        return tools.map((tool) => ({
-            name: `${escapedServerName}-${tool.name}`,
-            description: tool.description || '',
-            parameters_json_schema: tool.inputSchema,
-        }));
-    }
-
-    /**
      * Parse a tool definition name to extract server name and tool name
-     * @param toolDefinitionName The prefixed tool name (e.g., "server-toolname")
-     * @returns A tuple of [serverName, toolName]
      */
     private dispatchToolDefinitionName(toolDefinitionName: string): [string, string] {
         const [escapedServerName, ...toolNameParts] = toolDefinitionName.split('-');
         const toolName = toolNameParts.join('-'); // Handle tool names that might contain hyphens
-
-        // Note: We can't reliably convert the escaped server name back to the original
-        // since multiple server names could escape to the same value
-        // The caller would need to maintain a mapping of escaped to original names
-
         return [escapedServerName, toolName];
     }
 
     /**
-     * Get all MCP tools as a ToolSet compatible with the Vercel AI SDK
-     * @returns A ToolSet object containing all MCP tools
+     * Get all MCP tools as a ToolSet compatible with the AI SDK
      */
     public async getToolSet(): Promise<ToolSet> {
-        const mcpTools = await this.listAllTools();
-        const toolSet: ToolSet = {};
+        const allTools: ToolSet = {};
 
-        for (const mcpTool of mcpTools) {
-            const escapedServerName = this.escapeServerName(mcpTool.server);
-            const toolName = `${escapedServerName}-${mcpTool.name}`;
+        // Collect tools from all clients
+        for (const [serverName, client] of Object.entries(this.clients)) {
+            try {
+                const toolSet = await client.tools();
 
-            toolSet[toolName] = tool({
-                description: mcpTool.description,
-                parameters: this.convertJsonSchemaToZod(mcpTool.input_schema),
-                execute: async (args) => {
-                    try {
-                        const result = await this.callTool(toolName, args);
-                        return result;
-                    } catch (error) {
-                        return `Error: ${error instanceof Error ? error.message : 'Unknown error'}`;
-                    }
-                },
-            });
+                // Add each tool to the combined toolset with server prefix
+                for (const [toolName, toolObj] of Object.entries(toolSet)) {
+                    const prefixedName = `${serverName}-${toolName}`;
+                    allTools[prefixedName] = toolObj as any;
+                }
+            } catch (e) {
+                console.error(`Failed to get tools for ${serverName}:`, e);
+            }
         }
 
-        return toolSet;
-    }
-
-    /**
-     * Helper method to convert JSON Schema to Zod schema
-     * @param schema JSON Schema object
-     * @returns Zod schema
-     */
-    private convertJsonSchemaToZod(schema: any): z.ZodTypeAny {
-        if (!schema || !schema.properties) {
-            return z.object({});
-        }
-
-        const zodSchema: Record<string, z.ZodTypeAny> = {};
-        const required = schema.required || [];
-
-        for (const [key, prop] of Object.entries<any>(schema.properties)) {
-            let zodProp;
-
-            switch (prop.type) {
-                case 'string':
-                    zodProp = z.string();
-                    if (prop.enum) {
-                        zodProp = z.enum(prop.enum);
-                    }
-                    break;
-                case 'number':
-                    zodProp = z.number();
-                    break;
-                case 'integer':
-                    zodProp = z.number().int();
-                    break;
-                case 'boolean':
-                    zodProp = z.boolean();
-                    break;
-                case 'array':
-                    if (prop.items) {
-                        zodProp = z.array(this.convertJsonSchemaToZod(prop.items));
-                    } else {
-                        zodProp = z.array(z.any());
-                    }
-                    break;
-                case 'object':
-                    zodProp = this.convertJsonSchemaToZod(prop);
-                    break;
-                default:
-                    zodProp = z.any();
-            }
-
-            if (prop.description) {
-                zodProp = zodProp.describe(prop.description);
-            }
-
-            if (!required.includes(key)) {
-                zodProp = zodProp.optional();
-            }
-
-            zodSchema[key] = zodProp;
-        }
-
-        return z.object(zodSchema);
+        return allTools;
     }
 }
