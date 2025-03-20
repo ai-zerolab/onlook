@@ -47,7 +47,7 @@ class MCPService {
         // Validate each server configuration
         for (const [serverName, serverConfig] of Object.entries(config.mcpServers)) {
             // Skip disabled servers
-            if (serverConfig.disabled) {
+            if (serverConfig.disabled || 'command' in serverConfig === false) {
                 validatedConfig.mcpServers[serverName] = serverConfig;
                 continue;
             }
@@ -122,7 +122,7 @@ class MCPService {
 
             // Log environment variables for debugging
             for (const [serverName, serverConfig] of Object.entries(validatedConfig.mcpServers)) {
-                if (!serverConfig.disabled) {
+                if (!serverConfig.disabled && 'command' in serverConfig) {
                     console.log(`Server ${serverName} environment:`, {
                         PATH: serverConfig.env?.PATH
                             ? `${serverConfig.env.PATH.substring(0, 50)}...`
