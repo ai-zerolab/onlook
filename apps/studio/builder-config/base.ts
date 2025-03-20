@@ -25,12 +25,12 @@ const config: Configuration = {
         target: [
             {
                 target: 'dmg',
-                arch: ['x64', 'arm64'],
+                arch: ['arm64'],
             } as TargetConfiguration,
-            {
-                target: 'zip',
-                arch: ['x64', 'arm64'],
-            } as TargetConfiguration,
+            // {
+            //     target: 'zip',
+            //     arch: ['arm64'],
+            // } as TargetConfiguration,
         ],
     },
     win: {

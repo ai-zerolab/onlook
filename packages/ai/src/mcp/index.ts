@@ -1,4 +1,5 @@
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { WebSocketClientTransport } from '@modelcontextprotocol/sdk/client/websocket.js';
 import { experimental_createMCPClient, type ToolSet } from 'ai';
 
 /**
@@ -110,12 +111,18 @@ export class MCPClientManager {
 
         try {
             // Create MCP client
-            const client = await experimental_createMCPClient({
-                transport: {
-                    type: 'sse',
-                    url: params.url,
-                },
-            });
+            let client;
+            if (params.url.startsWith('ws://') || params.url.startsWith('wss://')) {
+                const transport = new WebSocketClientTransport(new URL(params.url));
+                client = await experimental_createMCPClient({ transport });
+            } else {
+                client = await experimental_createMCPClient({
+                    transport: {
+                        type: 'sse',
+                        url: params.url,
+                    },
+                });
+            }
 
             this.clients[escapedKey] = client;
             console.log(`Successfully connected to MCP server: ${key}`);
