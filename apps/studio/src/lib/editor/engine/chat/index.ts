@@ -184,6 +184,7 @@ export class ChatManager {
             await this.conversation.generateConversationSummary();
         }
 
+        // @ts-expect-error: res.payload type is not explicitly defined
         this.handleNewCoreMessages(res.payload);
 
         if (

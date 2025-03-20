@@ -38,3 +38,4 @@ yarn.lock
 
 # Supabase
 apps/backend
+build.sh
