@@ -32,7 +32,6 @@ export class AssistantChatMessageImpl implements AssistantChatMessage {
     }
 
     static fromJSON(data: AssistantChatMessage): AssistantChatMessageImpl {
-        // @ts-expect-error TODO: Fix this
         const message = new AssistantChatMessageImpl(data.content);
         message.id = data.id;
         message.applied = data.applied;

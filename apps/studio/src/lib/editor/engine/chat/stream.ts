@@ -18,7 +18,6 @@ export class StreamResolver {
     listen() {
         window.api.on(MainChannels.CHAT_STREAM_PARTIAL, (args: PartialStreamResponse) => {
             const { payload } = args;
-            // @ts-expect-error TODO: Fix this
             this.resolveContent(payload);
             this.errorMessage = null;
             this.rateLimited = null;
