@@ -40,7 +40,7 @@ export async function createProject(
 
 async function downloadTemplate(fullPath: string) {
     try {
-        const zipUrl = `https://github.com/onlook-dev/starter/archive/refs/heads/main.zip`;
+        const zipUrl = `https://github.com/ai-zerolab/starter/archive/refs/heads/main.zip`;
         await download(zipUrl, fullPath, {
             extract: true,
             strip: 1,
