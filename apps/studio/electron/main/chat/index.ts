@@ -80,7 +80,7 @@ class LlmManager {
                 } as CoreSystemMessage;
                 messages = [systemMessage, ...messages];
             }
-            const model = await initModel(LLMProvider.BEDROCK_MODELS, BEDROCK_MODELS.SONNET, {
+            const model = await initModel(LLMProvider.DELAMAIN, BEDROCK_MODELS.SONNET, {
                 requestType,
             });
 

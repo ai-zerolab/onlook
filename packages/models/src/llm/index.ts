@@ -1,4 +1,5 @@
 export enum LLMProvider {
+    DELAMAIN = 'delamain',
     ANTHROPIC = 'anthropic',
     BEDROCK_MODELS = 'bedrock',
 }

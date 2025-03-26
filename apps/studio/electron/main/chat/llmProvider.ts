@@ -15,6 +15,8 @@ export async function initModel(
     payload: OnlookPayload,
 ): Promise<LanguageModelV1> {
     switch (provider) {
+        case LLMProvider.DELAMAIN:
+            return await getDelamainProvider();
         case LLMProvider.ANTHROPIC:
             return await getAnthropicProvider(model as CLAUDE_MODELS, payload);
         case LLMProvider.BEDROCK_MODELS:
@@ -22,6 +24,24 @@ export async function initModel(
         default:
             throw new Error(`Unsupported provider: ${provider}`);
     }
+}
+
+async function getDelamainProvider(): Promise<LanguageModelV1> {
+// model: CLAUDE_MODELS,
+// payload: OnlookPayload,
+    const config: {
+        apiKey?: string;
+        baseURL?: string;
+        headers?: Record<string, string>;
+    } = {};
+
+    config.baseURL = 'http://localhost:9870/anthropic/v1';
+    config.apiKey = 'No key';
+
+    const anthropic = createAnthropic(config);
+    return anthropic(CLAUDE_MODELS.SONNET, {
+        cacheControl: true,
+    });
 }
 
 async function getBedrockProvider(model: BEDROCK_MODELS): Promise<LanguageModelV1> {
