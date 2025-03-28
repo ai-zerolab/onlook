@@ -35,8 +35,8 @@ async function getDelamainProvider(): Promise<LanguageModelV1> {
         headers?: Record<string, string>;
     } = {};
 
-    config.baseURL = import.meta.env.VITE_DELAMAIN_BASE_URL;
-    config.apiKey = import.meta.env.VITE_DELAMAIN_API_KEY || '';
+    config.baseURL = import.meta.env.VITE_DELAMAIN_BASE_URL || "http://localhost:9870/anthropic/v1";
+    config.apiKey = import.meta.env.VITE_DELAMAIN_API_KEY || 'no key';
 
     const anthropic = createAnthropic(config);
     return anthropic(CLAUDE_MODELS.SONNET, {

@@ -102,7 +102,7 @@ class LlmManager {
                     console.error('Error', JSON.stringify(error, null, 2));
                     throw error;
                 },
-                maxSteps: 10,
+                maxSteps: 20,
                 tools: tools,
                 maxTokens: 64000,
                 headers: {
