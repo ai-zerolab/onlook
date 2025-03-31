@@ -27,15 +27,15 @@ export async function initModel(
 }
 
 async function getDelamainProvider(): Promise<LanguageModelV1> {
-// model: CLAUDE_MODELS,
-// payload: OnlookPayload,
+    // model: CLAUDE_MODELS,
+    // payload: OnlookPayload,
     const config: {
         apiKey?: string;
         baseURL?: string;
         headers?: Record<string, string>;
     } = {};
 
-    config.baseURL = import.meta.env.VITE_DELAMAIN_BASE_URL || "http://localhost:9870/anthropic/v1";
+    config.baseURL = import.meta.env.VITE_DELAMAIN_BASE_URL || 'http://localhost:9870/anthropic/v1';
     config.apiKey = import.meta.env.VITE_DELAMAIN_API_KEY || 'no key';
 
     const anthropic = createAnthropic(config);

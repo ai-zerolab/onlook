@@ -1,13 +1,14 @@
 import type { ProjectsManager } from '@/lib/projects';
 import { invokeMainChannel } from '@/lib/utils';
 import type { ColorItem } from '@/routes/editor/LayersPanel/BrandTab/ColorPanel/ColorPalletGroup';
-import { MainChannels } from '@onlook/models';
+import { DEFAULT_COLOR_NAME, MainChannels } from '@onlook/models';
 import type { ConfigResult, ParsedColors, ThemeColors } from '@onlook/models/assets';
 import { Theme } from '@onlook/models/assets';
 import { Color } from '@onlook/utility';
 import { makeAutoObservable } from 'mobx';
 import colors from 'tailwindcss/colors';
 import type { EditorEngine } from '..';
+import { camelCase } from 'lodash';
 
 interface ColorValue {
     value: string;
@@ -74,7 +75,7 @@ export class ThemeManager {
                     ) {
                         processConfigObject(value, prefix ? `${prefix}-${key}` : key, key);
 
-                        if ('DEFAULT' in value) {
+                        if (DEFAULT_COLOR_NAME in value) {
                             const varName = extractVarName(value.DEFAULT as string);
                             if (varName) {
                                 parsed[key] = {
@@ -182,7 +183,7 @@ export class ThemeManager {
                 ungroupedKeys.forEach((key) => {
                     colorGroupsObj[key] = [
                         {
-                            name: 'DEFAULT',
+                            name: DEFAULT_COLOR_NAME,
                             originalKey: `${key}-DEFAULT`,
                             lightColor: parsed[key].lightMode,
                             darkColor: parsed[key].darkMode,
@@ -230,7 +231,7 @@ export class ThemeManager {
 
                 // Create color items for each shade in the scale
                 const colorItems: ColorItem[] = Object.entries(defaultColorScale)
-                    .filter(([shade]) => shade !== 'DEFAULT')
+                    .filter(([shade]) => shade !== DEFAULT_COLOR_NAME)
                     .map(([shade, defaultValue]) => {
                         const lightModeValue = lightModeColors[`${colorName}-${shade}`]?.value;
                         const darkModeValue = darkModeColors[`${colorName}-${shade}`]?.value;
@@ -297,8 +298,8 @@ export class ThemeManager {
         try {
             await invokeMainChannel(MainChannels.UPDATE_TAILWIND_CONFIG, {
                 projectRoot,
-                originalKey: oldName.toLowerCase(),
-                newName: newName.toLowerCase(),
+                originalKey: oldName,
+                newName: newName,
             });
 
             // Refresh colors after rename
@@ -317,7 +318,7 @@ export class ThemeManager {
         try {
             await invokeMainChannel(MainChannels.DELETE_TAILWIND_CONFIG, {
                 projectRoot,
-                groupName: groupName.toLowerCase(),
+                groupName: groupName,
                 colorName,
             });
 
@@ -335,6 +336,7 @@ export class ThemeManager {
         newName: string,
         parentName?: string,
         theme?: Theme,
+        shouldSaveToConfig: boolean = false,
     ) {
         const projectRoot = this.projectsManager.project?.folderPath;
         if (!projectRoot) {
@@ -343,18 +345,31 @@ export class ThemeManager {
 
         try {
             // For new colors, pass empty originalKey and parentName
-            const originalKey = this.brandColors[groupName]?.[index]?.originalKey || '';
-            await invokeMainChannel(MainChannels.UPDATE_TAILWIND_CONFIG, {
-                projectRoot,
-                originalKey,
-                newColor: newColor.toHex(),
-                newName,
-                parentName,
-                theme,
-            });
+            const originalGroupName = camelCase(groupName);
+            const originalParentName = camelCase(parentName);
 
-            // Refresh colors after update
-            this.scanConfig();
+            const originalKey = this.brandColors[originalGroupName]?.[index]?.originalKey || '';
+
+            // If is selected element, update the color in real-time
+            // Base on the class name, find the styles to update
+
+            // Only save to Tailwind config if explicitly requested
+            if (shouldSaveToConfig) {
+                await invokeMainChannel(MainChannels.UPDATE_TAILWIND_CONFIG, {
+                    projectRoot,
+                    originalKey,
+                    newColor: newColor.toHex(),
+                    newName,
+                    parentName: originalParentName,
+                    theme,
+                });
+
+                // Refresh colors after update
+                this.scanConfig();
+
+                // Force a theme refresh for all frames
+                await this.editorEngine.webviews.reloadWebviews();
+            }
         } catch (error) {
             console.error('Error updating color:', error);
         }
@@ -444,7 +459,15 @@ export class ThemeManager {
                         : colorToDuplicate.lightColor,
                 );
 
-                await this.update(groupName, group.length, color, newName, groupName.toLowerCase());
+                await this.update(
+                    groupName,
+                    group.length,
+                    color,
+                    newName,
+                    groupName.toLowerCase(),
+                    theme,
+                    true,
+                );
 
                 this.scanConfig();
             }
@@ -474,8 +497,8 @@ export class ThemeManager {
 
         const brandGroup = this.brandColors[groupName];
         if (brandGroup) {
-            if (!shadeName || shadeName === 'DEFAULT') {
-                const defaultColor = brandGroup.find((color) => color.name === 'DEFAULT');
+            if (!shadeName || shadeName === DEFAULT_COLOR_NAME) {
+                const defaultColor = brandGroup.find((color) => color.name === DEFAULT_COLOR_NAME);
                 if (defaultColor?.lightColor) {
                     return defaultColor.lightColor;
                 }

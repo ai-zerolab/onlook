@@ -3,10 +3,11 @@ import { invokeMainChannel, sendAnalytics } from '@/lib/utils';
 import { type ChatConversation, type ChatMessageContext } from '@onlook/models/chat';
 import { MainChannels } from '@onlook/models/constants';
 import type { Project } from '@onlook/models/projects';
-import type { CoreAssistantMessage, CoreUserMessage } from 'ai';
+import type { CoreAssistantMessage, CoreToolMessage, CoreUserMessage } from 'ai';
 import { makeAutoObservable, reaction } from 'mobx';
 import type { EditorEngine } from '../..';
 import { AssistantChatMessageImpl } from '../message/assistant';
+import { ToolChatMessageImpl } from '../message/tool';
 import { UserChatMessageImpl } from '../message/user';
 import { MOCK_CHAT_MESSAGES } from '../mockData';
 import { ChatConversationImpl } from './conversation';
@@ -29,7 +30,7 @@ export class ConversationManager {
     }
 
     async getCurrentProjectConversations(project: Project | null) {
-        this.editorEngine.chat.stream.clear();
+        this.editorEngine.chat.stream.dispose();
         if (!project) {
             return;
         }
@@ -84,7 +85,7 @@ export class ConversationManager {
         }
         this.current = new ChatConversationImpl(this.projectId, []);
         this.conversations.push(this.current);
-        this.editorEngine.chat.stream.clear();
+        this.editorEngine.chat.stream.dispose();
         sendAnalytics('start new conversation');
     }
 
@@ -95,7 +96,7 @@ export class ConversationManager {
             return;
         }
         this.current = match;
-        this.editorEngine.chat.stream.clear();
+        this.editorEngine.chat.stream.dispose();
         sendAnalytics('select conversation');
     }
 
@@ -124,7 +125,7 @@ export class ConversationManager {
                 this.conversations.push(this.current);
             }
         }
-        this.editorEngine.chat.stream.clear();
+        this.editorEngine.chat.stream.dispose();
         sendAnalytics('delete conversation');
     }
 
@@ -192,6 +193,17 @@ export class ConversationManager {
             return;
         }
         const newMessage = AssistantChatMessageImpl.fromCoreMessage(coreMessage);
+        this.current.appendMessage(newMessage);
+        this.saveConversationToStorage();
+        return newMessage;
+    }
+
+    addCoreToolMessage(coreMessage: CoreToolMessage): ToolChatMessageImpl | undefined {
+        if (!this.current) {
+            console.error('No conversation found');
+            return;
+        }
+        const newMessage = ToolChatMessageImpl.fromCoreMessage(coreMessage);
         this.current.appendMessage(newMessage);
         this.saveConversationToStorage();
         return newMessage;

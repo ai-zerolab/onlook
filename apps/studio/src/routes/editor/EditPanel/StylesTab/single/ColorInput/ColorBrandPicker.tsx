@@ -5,7 +5,7 @@ import { Icons } from '@onlook/ui/icons/index';
 import { Input } from '@onlook/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@onlook/ui/popover';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@onlook/ui/tabs';
-import { Color } from '@onlook/utility';
+import { Color, toNormalCase } from '@onlook/utility';
 import { memo, useEffect, useRef, useState } from 'react';
 import { isBackgroundImageEmpty } from '.';
 import ColorButton from './ColorButton';
@@ -31,13 +31,20 @@ const ColorGroup = ({
     colors,
     onColorSelect,
     isDefault = false,
+    isExpanded = false,
 }: {
     name: string;
     colors: ColorItem[];
     onColorSelect: (colorKey: ColorItem) => void;
     isDefault?: boolean;
+    isExpanded?: boolean;
 }) => {
     const [expanded, setExpanded] = useState(false);
+
+    useEffect(() => {
+        setExpanded(isExpanded);
+    }, [isExpanded]);
+
     return (
         <div className="w-full group">
             <button
@@ -46,7 +53,7 @@ const ColorGroup = ({
                 onClick={() => setExpanded(!expanded)}
             >
                 <div className="flex items-center gap-1  flex-1">
-                    <span className="text-xs font-normal capitalize">{name}</span>
+                    <span className="text-xs font-normal capitalize">{toNormalCase(name)}</span>
                     {isDefault && (
                         <span className="ml-2 text-xs text-muted-foreground">Default</span>
                     )}
@@ -65,7 +72,9 @@ const ColorGroup = ({
                             className="w-5 h-5 rounded-sm"
                             style={{ backgroundColor: color.lightColor }}
                         />
-                        <span className="text-xs font-normal truncate max-w-32">{color.name}</span>
+                        <span className="text-xs font-normal truncate max-w-32">
+                            {toNormalCase(color.name)}
+                        </span>
                     </div>
                 ))}
         </div>
@@ -96,16 +105,20 @@ export const BrandPopoverPicker = memo(
 
         const filteredColorGroups = Object.entries(editorEngine.theme.colorGroups).filter(
             ([name, colors]) => {
-                return colors.some((color) =>
-                    color.name.toLowerCase().includes(searchQuery.toLowerCase()),
+                const query = searchQuery.toLowerCase();
+                return (
+                    name.toLowerCase().includes(query) ||
+                    colors.some((color) => color.name.toLowerCase().includes(query))
                 );
             },
         );
 
         const filteredColorDefaults = Object.entries(editorEngine.theme.colorDefaults).filter(
             ([name, colors]) => {
-                return colors.some((color) =>
-                    color.name.toLowerCase().includes(searchQuery.toLowerCase()),
+                const query = searchQuery.toLowerCase();
+                return (
+                    name.toLowerCase().includes(query) ||
+                    colors.some((color) => color.name.toLowerCase().includes(query))
                 );
             },
         );
@@ -188,6 +201,7 @@ export const BrandPopoverPicker = memo(
                                             name={name}
                                             colors={colors}
                                             onColorSelect={handleColorSelect}
+                                            isExpanded={!!searchQuery}
                                         />
                                     ))}
                                     {filteredColorDefaults.map(([name, colors]) => (
@@ -197,6 +211,7 @@ export const BrandPopoverPicker = memo(
                                             colors={colors}
                                             onColorSelect={handleColorSelect}
                                             isDefault={true}
+                                            isExpanded={!!searchQuery}
                                         />
                                     ))}
                                 </div>

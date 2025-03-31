@@ -1,3 +1,7 @@
+import { useEditorEngine } from '@/components/Context';
+import { invokeMainChannel } from '@/lib/utils';
+import { Theme } from '@onlook/models/assets';
+import { MainChannels } from '@onlook/models/constants';
 import { Button } from '@onlook/ui/button';
 import {
     DropdownMenu,
@@ -6,14 +10,11 @@ import {
     DropdownMenuTrigger,
 } from '@onlook/ui/dropdown-menu';
 import { Icons } from '@onlook/ui/icons';
-import { Color } from '@onlook/utility';
+import { Tooltip, TooltipContent, TooltipPortal, TooltipTrigger } from '@onlook/ui/tooltip';
+import { Color, toNormalCase } from '@onlook/utility';
 import { useState } from 'react';
 import { ColorPopover } from './ColorPopover';
-import { MainChannels } from '@onlook/models/constants';
-import { invokeMainChannel } from '@/lib/utils';
-import { useEditorEngine } from '@/components/Context';
-import { Tooltip, TooltipContent, TooltipTrigger, TooltipPortal } from '@onlook/ui/tooltip';
-import { Theme } from '@onlook/models/assets';
+import { camelCase } from 'lodash';
 
 export interface ColorItem {
     name: string;
@@ -43,6 +44,13 @@ interface BrandPalletGroupProps {
         newName: string,
         parentName?: string,
     ) => void;
+    onColorChangeEnd?: (
+        groupName: string,
+        colorIndex: number,
+        newColor: Color,
+        newName: string,
+        parentName?: string,
+    ) => void;
     onDuplicate?: (colorName: string) => void;
     isDefaultPalette?: boolean;
 }
@@ -54,6 +62,7 @@ export const BrandPalletGroup = ({
     onRename,
     onDelete,
     onColorChange,
+    onColorChangeEnd,
     onDuplicate,
     isDefaultPalette = false,
 }: BrandPalletGroupProps) => {
@@ -73,7 +82,18 @@ export const BrandPalletGroup = ({
         parentName?: string,
     ) => {
         if (onColorChange) {
-            onColorChange(title.toLowerCase(), index, newColor, newName, parentName);
+            onColorChange(title, index, newColor, newName, parentName);
+        }
+    };
+
+    const handleColorChangeEnd = (
+        index: number,
+        newColor: Color,
+        newName: string,
+        parentName?: string,
+    ) => {
+        if (onColorChangeEnd) {
+            onColorChangeEnd(title, index, newColor, newName, parentName);
         }
         setEditingColorIndex(null);
         setIsAddingNewColor(false);
@@ -84,11 +104,17 @@ export const BrandPalletGroup = ({
     };
 
     const handleRenameClick = () => {
-        setNewGroupName(title);
+        setNewGroupName(toNormalCase(title));
         setIsRenaming(true);
+        setLocalError(null);
     };
 
     const validateName = (value: string) => {
+        // Only allow text characters, numbers, and spaces and not start with number
+        if (!/^[a-zA-Z0-9\s]+$/.test(value) || /^[0-9]/.test(value)) {
+            return 'Group name can only contain text, numbers, and spaces and not start with number';
+        }
+
         if (value.trim() === '') {
             return 'Group name cannot be empty';
         }
@@ -97,7 +123,10 @@ export const BrandPalletGroup = ({
             return null;
         }
 
-        if (Object.keys(themeManager.colorGroups).includes(value.toLowerCase())) {
+        if (
+            Object.keys(themeManager.colorGroups).includes(camelCase(value)) &&
+            camelCase(value) !== title
+        ) {
             return 'Group name already exists';
         }
 
@@ -113,7 +142,8 @@ export const BrandPalletGroup = ({
 
     const handleRenameSubmit = () => {
         if (!localError && newGroupName.trim() && newGroupName !== title) {
-            onRename(title.toLowerCase(), newGroupName.trim());
+            const newName = camelCase(newGroupName);
+            onRename(title, newName);
         }
         setIsRenaming(false);
         setLocalError(null);
@@ -172,7 +202,7 @@ export const BrandPalletGroup = ({
                     </Tooltip>
                 ) : (
                     <span className="text-small text-foreground-secondary font-normal">
-                        {title}
+                        {toNormalCase(title)}
                     </span>
                 )}
                 {!isDefaultPalette && (
@@ -232,6 +262,9 @@ export const BrandPalletGroup = ({
                                         onColorChange={(newColor, newName) =>
                                             handleColorChange(index, newColor, newName)
                                         }
+                                        onColorChangeEnd={(newColor, newName) =>
+                                            handleColorChangeEnd(index, newColor, newName)
+                                        }
                                         isDefaultPalette={isDefaultPalette}
                                         existedName={existedName}
                                     />
@@ -257,9 +290,11 @@ export const BrandPalletGroup = ({
                                                                 <TooltipContent side="top">
                                                                     <div className="flex flex-col">
                                                                         <span className="text-sm">
-                                                                            {color.name}
+                                                                            {toNormalCase(
+                                                                                color.name,
+                                                                            )}
                                                                         </span>
-                                                                        <span className="text-xs text-muted-foreground">
+                                                                        <span className="text-xs text-background-tertiary">
                                                                             {getColorValue(color)}
                                                                         </span>
                                                                     </div>
@@ -283,7 +318,7 @@ export const BrandPalletGroup = ({
                                                         />
                                                         <div className="flex flex-col">
                                                             <span className="text-sm text-foreground">
-                                                                {color.name}
+                                                                {toNormalCase(color.name)}
                                                             </span>
                                                             <span className="text-xs text-muted-foreground">
                                                                 {getColorValue(color)}
@@ -377,12 +412,10 @@ export const BrandPalletGroup = ({
                             brandColor="New Color"
                             onClose={() => setIsAddingNewColor(false)}
                             onColorChange={(newColor, newName) =>
-                                handleColorChange(
-                                    colors?.length || 0,
-                                    newColor,
-                                    newName,
-                                    title.toLowerCase(),
-                                )
+                                handleColorChange(colors?.length || 0, newColor, newName, title)
+                            }
+                            onColorChangeEnd={(newColor, newName) =>
+                                handleColorChangeEnd(colors?.length || 0, newColor, newName, title)
                             }
                             existedName={existedName}
                         />

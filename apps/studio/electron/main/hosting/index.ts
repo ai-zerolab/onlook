@@ -21,16 +21,18 @@ import {
 } from '@onlook/models/hosting';
 import { isEmptyString, isNullOrUndefined } from '@onlook/utility';
 import {
+    type DeploymentSource,
     type FreestyleDeployWebConfiguration,
     type FreestyleDeployWebSuccessResponse,
+    type FreestyleFile,
 } from 'freestyle-sandboxes';
+import { prepareDirForDeployment } from 'freestyle-sandboxes/utils';
 import { mainWindow } from '..';
 import analytics from '../analytics';
 import { getRefreshedAuthTokens } from '../auth';
 import {
     postprocessNextBuild,
     preprocessNextBuild,
-    serializeFiles,
     updateGitignore,
     type FileRecord,
 } from './helpers';
@@ -85,7 +87,15 @@ class HostingManager {
 
             // Serialize the files for deployment
             const NEXT_BUILD_OUTPUT_PATH = `${folderPath}/${CUSTOM_OUTPUT_DIR}/standalone`;
-            const files: FileRecord = serializeFiles(NEXT_BUILD_OUTPUT_PATH);
+            const source: DeploymentSource = (await prepareDirForDeployment(
+                NEXT_BUILD_OUTPUT_PATH,
+            )) as {
+                files: {
+                    [key: string]: FreestyleFile;
+                };
+                kind: 'files';
+            };
+            const files: FileRecord = source.files;
 
             this.emitState(PublishStatus.LOADING, 'Deploying project...');
             timer.log('Files serialized, sending to Freestyle...');
